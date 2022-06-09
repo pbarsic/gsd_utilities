@@ -69,6 +69,7 @@ def plot(
     focal_mm: float,
     declination_deg: float,
     camera_height_m: float,
+    levels=[0.5, 1.0, 1.25, 1.5, 2.5, 3.5],
 ) -> None:
     """
     plot the GSD over the entire sensor
@@ -92,7 +93,7 @@ def plot(
         camera_height_m,
     )
 
-    ctf = plt.contourf(xs, ys, z)
+    ctf = plt.contourf(xs, ys, z, levels=levels)
     plt.colorbar(ctf)
     plt.xlabel("x-pixel coordinate")
     plt.ylabel("y-pixel coordinate")
