@@ -24,6 +24,35 @@ def gsd(
     )
 
 
+def groundPoint(
+    u: float,
+    v: float,
+    sensor_width_pixels: int,
+    sensor_height_pixels: int,
+    pitch_um_per_px: float,
+    focal_mm: float,
+    camera_height_m: float,
+    declination_degrees: float,
+):
+    """
+    returns (x,y,0) coordinate that corresponds to pixel coordinate (u,v)
+    this assumes that (u,v) are relative to the coordinate system with the
+    origin at the center of the sensor
+    """
+    dec = np.pi * 0.5 + declination_degrees * np.pi / 180.0
+    x = (u - sensor_width_pixels * 0.5) * pitch_um_per_px * 1e-3
+    y = (v - sensor_height_pixels * 0.5) * pitch_um_per_px * 1e-3
+    xp = x
+    yp = y * np.cos(dec) + focal_mm * np.sin(dec)
+    zp = -y * np.sin(dec) + focal_mm * np.cos(dec)
+    hmm = camera_height_m * 1e3
+    t = hmm / (hmm + zp)
+    print(f"xp: {xp.shape} yp: {yp.shape} t: {t.shape} hmm: {hmm}")
+    xg = xp * t
+    yg = yp * t
+    return (xg, yg, zp)
+
+
 def sensorGSD(
     sensor_width_pixels: int,
     sensor_height_pixels: int,
@@ -52,14 +81,27 @@ def sensorGSD(
         -sensor_height_pixels // 2, sensor_height_pixels // 2, plot_resoluton_pixels
     )
     (x, y) = np.meshgrid(xl, yl)
-    z = gsd(x, y, pitch_um_per_px, focal_mm, camera_height_m, declination_deg)
+    dp = gsd(x, y, pitch_um_per_px, focal_mm, camera_height_m, declination_deg)
 
     # now you need to flip the sensor coordinates
     # and re-center it at top left corner
     xsens = np.arange(0, sensor_width_pixels, plot_resoluton_pixels)
     ysens = np.arange(sensor_height_pixels, 0, -plot_resoluton_pixels)
     (xs, ys) = np.meshgrid(xsens, ysens)
-    return (xs, ys, z)
+
+    # now compute the ground coordinates
+    (xg, yg, t) = groundPoint(
+        xs,
+        ys,
+        sensor_width_pixels,
+        sensor_height_pixels,
+        pitch_um_per_px,
+        focal_mm,
+        camera_height_m,
+        declination_deg,
+    )
+    # xg, yg = np.meshgrid(xground, yground)
+    return (xs, ys, xg, yg, dp, t)
 
 
 def plot(
@@ -84,7 +126,7 @@ def plot(
     camera_height_m: height of camera above ground
     """
 
-    (xs, ys, z) = sensorGSD(
+    (xs, ys, xg, yg, z, t) = sensorGSD(
         sensor_width_pixels,
         sensor_height_pixels,
         pitch_um_px,
@@ -93,12 +135,23 @@ def plot(
         camera_height_m,
     )
 
-    ctf = plt.contourf(xs, ys, z, levels=levels)
+    fig, axs = plt.subplots(1,2)
+    fig.set_figwidth(fig.get_figwidth() * 2)
+    ctf = axs[0].contourf(xs, ys, z, levels=levels)
     plt.colorbar(ctf)
-    plt.xlabel("x-pixel coordinate")
-    plt.ylabel("y-pixel coordinate")
-    plt.title("GSD (mm) displayed in sensor coordinates")
-    plt.grid()
+    axs[0].set_xlabel("x-pixel coordinate")
+    axs[0].set_ylabel("y-pixel coordinate")
+    axs[0].set_title("GSD (mm) displayed in sensor coordinates")
+    axs[0].grid()
+
+    print(f"t: {min(t.ravel())} : {max(t.ravel())} {max(t.ravel()) - min(t.ravel())}")
+    print(f"camera height mm {1e3 * camera_height_m}")
+    # ctg = axs[1].contourf(xg, yg, z, levels=levels)
+    ctg = axs[1].contourf(xg, yg, t)
+    axs[1].set_xlabel("x coordinate (m?)")
+    axs[1].set_ylabel("y coordinate (m?)")
+    axs[1].set_title("GSD (mm) displayed in ground coordinates")
+    axs[1].grid()
     plt.show()
     return
 
@@ -145,7 +198,7 @@ def summary(
     # summary:
     print(
         f"Sensor shape: [{sensor_width_pixels}, {sensor_height_pixels}] pixels\n"
-        f"focal length {focal_mm} mm, pitch {1e-3*pitch_um_px:0.3e} mm/pixel\n"
+        f"focal length {focal_mm:0.2e} mm, pitch {1e-3*pitch_um_px:0.3e} mm/pixel\n"
         f"camera height {camera_height_m} m\n"
         f"declination {declination_deg} degrees down from horizontal\n"
         f"estimated GSD at center {center_GSD_mm:0.1f} mm\n"
@@ -156,10 +209,10 @@ def summary(
 
 if __name__ == "__main__":
     print("Demo run for the Lucid Trident 230s with a 12mm lens")
-    sensor_width_pixels = 1920
-    sensor_height_pixels = 1200
-    pitch_um_px = 3.45  # microns/pixel
-    focal_mm = 12  # mm
+    sensor_width_pixels = 5164
+    sensor_height_pixels = 3873
+    pitch_um_px = 1.47  # microns/pixel
+    focal_mm = 6.83  # mm
     declination_deg = 30  # degrees down from horizontal
     camera_height_m = 2  # meters
 
@@ -179,4 +232,5 @@ if __name__ == "__main__":
         focal_mm,
         declination_deg,
         camera_height_m,
+        levels=[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0],
     )
