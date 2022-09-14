@@ -50,7 +50,7 @@ def groundPoint(
     print(f"xp: {xp.shape} yp: {yp.shape} t: {t.shape} hmm: {hmm}")
     xg = xp * t
     yg = yp * t
-    return (xg, yg)
+    return (xg, -yg)
 
 
 def sensorGSD(
@@ -90,9 +90,10 @@ def sensorGSD(
     (xs, ys) = np.meshgrid(xsens, ysens)
 
     # now compute the ground coordinates
+    # but beware the y-axis flip
     (xg, yg) = groundPoint(
         xs,
-        ys,
+        sensor_height_pixels - ys,
         sensor_width_pixels,
         sensor_height_pixels,
         pitch_um_per_px,
