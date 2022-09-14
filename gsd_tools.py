@@ -47,7 +47,7 @@ def groundPoint(
     zp = -y * np.sin(dec) + focal_mm * np.cos(dec)
     hmm = camera_height_m * 1e3
     t = hmm / zp
-    print(f"xp: {xp.shape} yp: {yp.shape} t: {t.shape} hmm: {hmm}")
+    # print(f"xp: {xp.shape} yp: {yp.shape} t: {t.shape} hmm: {hmm}")
     xg = xp * t
     yg = yp * t
     return (xg, -yg)
@@ -177,10 +177,12 @@ def plot(
     axs[1].set_title("GSD (mm) displayed in sensor coordinates")
     axs[1].grid()
 
-    ctg = axs[0].contourf(xg, yg, z, levels=levels)
-    axs[0].plot(xc, yc, 'red')
-    axs[0].set_xlabel("x coordinate (m)")
-    axs[0].set_ylabel("y coordinate (m)")
+    for x,y in zip(xc,yc):
+        print(f"{x/25.4}, {y/25.4}")
+    ctg = axs[0].contourf(xg / 25.4, yg/ 25.4, z, levels=levels)
+    axs[0].plot(xc / 25.4, yc/ 25.4, 'red')
+    axs[0].set_xlabel("x coordinate (in)")
+    axs[0].set_ylabel("y coordinate (in)")
     axs[0].set_title("GSD (mm) displayed in ground coordinates")
     axs[0].grid()
     plt.show()
