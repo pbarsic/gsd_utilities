@@ -59,7 +59,8 @@ def sensorGSD(
     pitch_um_per_px: float,
     focal_mm: float,
     declination_deg: float,
-    camera_height_m: 2,
+    camera_height_m: float,
+    plot_resolution_pixels: int = 10,
 ) -> tuple:
     """
     compute the GSD over the entire sensor
@@ -73,20 +74,20 @@ def sensorGSD(
     declination_deg: camera declination, degrees down from horizon
     camera_height_m: height of camera above ground
     """
-    plot_resoluton_pixels = 10
+
     xl = np.arange(
-        -sensor_width_pixels // 2, sensor_width_pixels // 2, plot_resoluton_pixels
+        -sensor_width_pixels // 2, sensor_width_pixels // 2, plot_resolution_pixels
     )
     yl = np.arange(
-        -sensor_height_pixels // 2, sensor_height_pixels // 2, plot_resoluton_pixels
+        -sensor_height_pixels // 2, sensor_height_pixels // 2, plot_resolution_pixels
     )
     (x, y) = np.meshgrid(xl, yl)
     dp = gsd(x, y, pitch_um_per_px, focal_mm, camera_height_m, declination_deg)
 
     # now you need to flip the sensor coordinates
     # and re-center it at top left corner
-    xsens = np.arange(0, sensor_width_pixels, plot_resoluton_pixels)
-    ysens = np.arange(sensor_height_pixels, 0, -plot_resoluton_pixels)
+    xsens = np.arange(0, sensor_width_pixels, plot_resolution_pixels)
+    ysens = np.arange(sensor_height_pixels, 0, -plot_resolution_pixels)
     (xs, ys) = np.meshgrid(xsens, ysens)
 
     # now compute the ground coordinates
@@ -104,14 +105,18 @@ def sensorGSD(
     # xg, yg = np.meshgrid(xground, yground)
     return (xs, ys, xg, yg, dp)
 
+
 def cornerPoints(
     sensor_width_pixels: int,
     sensor_height_pixels: int,
     pitch_um_per_px: float,
     focal_mm: float,
     declination_deg: float,
-    camera_height_m: 2,
+    camera_height_m: float,
 ) -> tuple:
+    """
+    compute the ground projection of the sensor corners
+    """
 
     xs = np.array([0, 0, sensor_width_pixels, sensor_width_pixels, 0])
     ys = np.array([0, sensor_height_pixels, sensor_height_pixels, 0, 0])
@@ -127,6 +132,7 @@ def cornerPoints(
         declination_deg,
     )
     return (xg, yg)
+
 
 def plot(
     sensor_width_pixels: int,
@@ -150,7 +156,18 @@ def plot(
     camera_height_m: height of camera above ground
     """
 
+    plot_resolution_pixels = 10
     (xs, ys, xg, yg, z) = sensorGSD(
+        sensor_width_pixels,
+        sensor_height_pixels,
+        pitch_um_px,
+        focal_mm,
+        declination_deg,
+        camera_height_m,
+        plot_resolution_pixels=plot_resolution_pixels,
+    )
+
+    (xc, yc) = cornerPoints(
         sensor_width_pixels,
         sensor_height_pixels,
         pitch_um_px,
@@ -159,17 +176,41 @@ def plot(
         camera_height_m,
     )
 
-    (xc, yc) = cornerPoints(
-            sensor_width_pixels,
-        sensor_height_pixels,
-        pitch_um_px,
-        focal_mm,
-        declination_deg,
-        camera_height_m,
-    )
+    # this fudge factor of 0.84 makes me uncomfortable
+    # it means that there is a problem with the GSD estimation
+    # we appear to be over-estimating it
+    fudge_factor = 0.84
+    width = np.sum(z, axis=1) * plot_resolution_pixels * fudge_factor
+    height = np.sum(z, axis=0) * plot_resolution_pixels * fudge_factor
+    # these widths should match the footprint at the extreme ends
+    # but they don't, they seem to under-estimate it, so I need
+    # to re-visit the math
+    # You may instead want to take the gradient of the ground grid
+    # the corner point projections have been confirmed, the GSD have
+    # am I using the diagonal? Do I need a factor of 1.4?
+    # note that the height estimates are not good anywhere but the middle
+    print(f"GSD width: {width[-1]} {width[0]}")
 
-    fig, axs = plt.subplots(1,2)
+    max_width = abs(xc[3] - xc[0])
+    min_width = abs(xc[2] - xc[1])
+    print(f"corner width: {min_width}: {max_width }")
+
+    # print(f"height; {height[0]}: {height[height.shape[0]//2]}")
+
+    for x, y in zip(xc, yc):
+        print(f"{x}, {y}")
+
+    fig, axs = plt.subplots(1, 2)
     fig.set_figwidth(fig.get_figwidth() * 2.2)
+
+    ctg = axs[0].contourf(xg, yg, z, levels=levels)
+    axs[0].plot(xc, yc, "red")
+    # axs[0].plot(height)
+    axs[0].set_xlabel("x coordinate (mm)")
+    axs[0].set_ylabel("y coordinate (mm)")
+    axs[0].set_title("GSD (mm) displayed in ground coordinates")
+    axs[0].grid()
+
     ctf = axs[1].contourf(xs, ys, z, levels=levels)
     plt.colorbar(ctf)
     axs[1].set_xlabel("x-pixel coordinate")
@@ -177,14 +218,7 @@ def plot(
     axs[1].set_title("GSD (mm) displayed in sensor coordinates")
     axs[1].grid()
 
-    for x,y in zip(xc,yc):
-        print(f"{x/25.4}, {y/25.4}")
-    ctg = axs[0].contourf(xg / 25.4, yg/ 25.4, z, levels=levels)
-    axs[0].plot(xc / 25.4, yc/ 25.4, 'red')
-    axs[0].set_xlabel("x coordinate (in)")
-    axs[0].set_ylabel("y coordinate (in)")
-    axs[0].set_title("GSD (mm) displayed in ground coordinates")
-    axs[0].grid()
+
     plt.show()
     return
 
