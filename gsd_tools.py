@@ -75,14 +75,15 @@ def sensorGSD(
     camera_height_m: height of camera above ground
     """
 
-    xl = np.arange(
-        -sensor_width_pixels // 2, sensor_width_pixels // 2, plot_resolution_pixels
-    )
-    yl = np.arange(
-        -sensor_height_pixels // 2, sensor_height_pixels // 2, plot_resolution_pixels
-    )
-    (x, y) = np.meshgrid(xl, yl)
-    ds = gsd(x, y, pitch_um_per_px, focal_mm, camera_height_m, declination_deg)
+    # this approach is flawed because it mixes x and y
+    # xl = np.arange(
+    #     -sensor_width_pixels // 2, sensor_width_pixels // 2, plot_resolution_pixels
+    # )
+    # yl = np.arange(
+    #     -sensor_height_pixels // 2, sensor_height_pixels // 2, plot_resolution_pixels
+    # )
+    # (x, y) = np.meshgrid(xl, yl)
+    # ds = gsd(x, y, pitch_um_per_px, focal_mm, camera_height_m, declination_deg)
 
     # now you need to flip the sensor coordinates
     # and re-center it at top left corner
@@ -103,10 +104,13 @@ def sensorGSD(
         declination_deg,
     )
 
-    dgx = np.gradient(xg, plot_resolution_pixels, axis=1)
-    dgy = np.gradient(yg, plot_resolution_pixels, axis=0)
+    # determine GSD by gradients of d(xg)/dx, and d(yg)/dy
+    # the complication is that the coordinate definitions
+    # that plot nicely lead to negative gradients
+    # Also, the units here don't make sense
+    dgx = np.abs(np.gradient(xg, plot_resolution_pixels, axis=1))
+    dgy = np.abs(np.gradient(yg, plot_resolution_pixels, axis=0))
 
-    # TODO take derivative of d(xg)/dx, and d(yg)/dy
     return (xs, ys, xg, yg, dgx, dgy)
 
 
@@ -145,7 +149,8 @@ def plot(
     focal_mm: float,
     declination_deg: float,
     camera_height_m: float,
-    levels=[0.5, 1.0, 1.25, 1.5, 2.5, 3.5],
+    levels=None,
+    num_levels=10,
 ) -> None:
     """
     plot the GSD over the entire sensor
@@ -186,6 +191,7 @@ def plot(
     fudge_factor = 0.84
     width = np.abs(np.sum(dgx, axis=1)) * plot_resolution_pixels
     height = np.abs(np.sum(dgy, axis=0)) * plot_resolution_pixels
+
     # these widths should match the footprint at the extreme ends
     # but they don't, they seem to under-estimate it, so I need
     # to re-visit the math
@@ -193,29 +199,45 @@ def plot(
     # the corner point projections have been confirmed, the GSD have
     # am I using the diagonal? Do I need a factor of 1.4?
     # note that the height estimates are not good anywhere but the middle
-    print(f"GSD width: {width[-1]} {width[0]}")
     max_width = abs(xc[3] - xc[0])
     min_width = abs(xc[2] - xc[1])
-    print(f"corner width: {min_width}: {max_width }")
+    print(f"--x--\ncorner width: {min_width:.2f}: {max_width:.2f}")
+    print(f"GSD width: {width[-1]:.2f} {width[0]:.2f}")
+    print(f"GSD x: {dgx[-2][-2]:0.2f} {dgx[0][0]:0.2f}")
 
     max_height = np.sqrt((xc[1] - xc[0]) ** 2 + (yc[1] - yc[0]) ** 2)
     min_height = abs(yc[0] - yc[1])
-    print(f"GSD height: {height[0]} {height[height.shape[0]//2]} {height[-1]}")
-    print(f"corner height: {min_height}: {max_height}")
+    print(f"--y--\ncorner height: {min_height:.2f}: {max_height:.2f}")
+    print(
+        f"GSD height: {height[0]:.2f} {height[height.shape[0]//2]:.2f} {height[-1]:.2f}"
+    )
+    print(f"GSD y: {dgy[-2][-2]:0.2f} {dgy[0][0]:0.2f}")
 
     # for x, y in zip(xc, yc):
-    #     print(f"{x}, {y}")
+    #     print(f"{x/25.4}, {y/25.4}")
 
     fig, axs = plt.subplots(1, 2)
     fig.set_figwidth(fig.get_figwidth() * 2.2)
 
-    dgxy = np.sqrt(dgx**2 + dgy**2)
+    # dgxy = np.sqrt(dgx**2 + dgy**2)
+    dgxy = np.abs(dgy)
 
-    ctg = axs[0].contourf(xg, yg, dgxy, levels=levels)
-    axs[0].plot(xc, yc, "red")
+    unit_conversion = 1./25.4
+    unit_type = "in"
+
+    if levels is None:
+        dxy_min = int(min(min(dgx.ravel()), min(dgy.ravel())) * 100) * 0.01
+        dxy_max = int(max(max(dgx.ravel()), max(dgy.ravel())) * 100) * 0.01
+        delta = (dxy_max - dxy_min) / num_levels
+        if delta == 0:
+            delta = 0.01
+        levels = np.arange(dxy_min, dxy_max + delta, delta)
+
+    ctg = axs[0].contourf(xg * unit_conversion, yg * unit_conversion, dgxy, levels=levels)
+    axs[0].plot(xc * unit_conversion, yc * unit_conversion, "red")
     # axs[0].plot(height)
-    axs[0].set_xlabel("x coordinate (mm)")
-    axs[0].set_ylabel("y coordinate (mm)")
+    axs[0].set_xlabel(f"x coordinate ({unit_type})")
+    axs[0].set_ylabel(f"y coordinate ({unit_type})")
     axs[0].set_title("GSD (mm) displayed in ground coordinates")
     axs[0].grid()
 

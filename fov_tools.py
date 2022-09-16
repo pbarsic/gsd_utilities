@@ -36,7 +36,7 @@ def summary(identifier, width_px, height_px, pitch_um, f_mm, distance_m):
         f" FOV   Diagonal = {theta_d * 180. / np.pi:.1f} degrees\n"
         f"     Horizontal = {theta_h:.1f} degrees\n"
         f"       Vertical = {theta_v:.1f} degrees\n"
-        f"  GSD at {distance_m:.2f} m = {gsd_mm:.1f} mmm\n"
+        f"  GSD at {distance_m:.2f} m = {gsd_mm:.1f} mm\n"
     )
 
 
